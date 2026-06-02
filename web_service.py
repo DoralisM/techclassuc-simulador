@@ -1,0 +1,300 @@
+"""
+web_service.py
+--------------
+Servidor web de TechClassUC.
+Ruta raíz  GET /          → Panel visual HTML con reporte + gráficas.
+API REST   POST /simular  → JSON con métricas Montecarlo.
+           POST /analitico→ JSON con métricas M/M/c.
+           POST /sensibilidad → JSON análisis de sensibilidad.
+           POST /comparar → JSON comparación teoría vs simulación.
+           GET  /graficas/<nombre> → imagen PNG.
+"""
+
+import os, sys, traceback
+from flask import Flask, request, jsonify, send_file, render_template_string
+
+# ── parámetros base (visibles en el panel web) ─────────────────────────────
+LAM_BASE   = 10.0
+MU_BASE    = 4.0
+C_BASE     = 3
+T_SIM      = 480.0
+T_WARM     = 60.0
+N_REP      = 30
+SEMILLA    = 42
+
+BASE_DIR      = os.path.dirname(os.path.abspath(__file__))
+GRAFICAS_DIR  = os.path.join(BASE_DIR, "graficas")
+os.makedirs(GRAFICAS_DIR, exist_ok=True)
+
+app = Flask(__name__)
+
+# ── importar módulos del simulador ─────────────────────────────────────────
+sys.path.insert(0, BASE_DIR)
+from analitico     import calcular_mmc, comparar_con_simulacion
+from montecarlo    import correr_replicas
+from sensibilidad  import analisis_sensibilidad
+
+
+# ── generar todo al arrancar ───────────────────────────────────────────────
+class _Captura:
+    def __init__(self): self.texto = ""
+    def write(self, s): self.texto += s
+    def flush(self): pass
+
+_old = sys.stdout
+_cap = _Captura()
+sys.stdout = _cap
+
+_mc   = correr_replicas(N=N_REP, lam=LAM_BASE, mu=MU_BASE, c=C_BASE,
+                        t_sim=T_SIM, t_warm=T_WARM, semilla_base=SEMILLA)
+_teo  = calcular_mmc(LAM_BASE, MU_BASE, C_BASE)
+_comp = comparar_con_simulacion(LAM_BASE, MU_BASE, C_BASE, _mc["resumen"])
+_sens = analisis_sensibilidad(mu=MU_BASE, N=15, semilla_base=SEMILLA)
+
+# generar gráficas en la carpeta correcta
+from visualizacion import (grafica_evolucion_temporal, grafica_histograma_wq,
+                           grafica_wq_vs_c, grafica_rho_vs_lam,
+                           grafica_distribucion_medias_wq, grafica_heatmap_sensibilidad)
+import visualizacion as _viz
+_viz.SALIDA_DIR = GRAFICAS_DIR
+
+grafica_evolucion_temporal(LAM_BASE, MU_BASE, C_BASE, T_SIM, SEMILLA)
+grafica_histograma_wq(_mc["wq_todas"], LAM_BASE, MU_BASE, C_BASE)
+grafica_wq_vs_c(LAM_BASE, MU_BASE, list(range(1, 7)), N=15, t_sim=T_SIM, t_warm=T_WARM)
+grafica_rho_vs_lam(MU_BASE, list(range(2, 7)))
+grafica_distribucion_medias_wq(_mc["replicas"], LAM_BASE, MU_BASE, C_BASE)
+grafica_heatmap_sensibilidad(_sens)
+
+sys.stdout = _old
+REPORTE_CONSOLA = _cap.texto
+
+
+# ── plantilla HTML del panel ───────────────────────────────────────────────
+HTML = """<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TechClassUC — Simulador de Colas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600&display=swap" rel="stylesheet">
+<style>
+  :root{--bg:#0d0f14;--surface:#161a23;--border:#252a36;--accent:#00e5b0;--accent2:#5b8af5;--text:#e8eaf0;--muted:#7a8098;--warn:#f5a623;}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'IBM Plex Sans',sans-serif;font-size:15px;line-height:1.6;}
+  header{border-bottom:1px solid var(--border);padding:1.5rem 2.5rem;display:flex;align-items:center;gap:1rem;}
+  header .logo{font-family:'IBM Plex Mono',monospace;font-size:1.1rem;color:var(--accent);font-weight:600;letter-spacing:.05em;}
+  header .sub{color:var(--muted);font-size:.8rem;}
+  .badge{display:inline-block;padding:2px 10px;border-radius:99px;font-size:.7rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;}
+  .badge-ok{background:#0d2e24;color:var(--accent);}
+  .badge-warn{background:#2e200d;color:var(--warn);}
+  main{max-width:1060px;margin:0 auto;padding:2rem 2rem 4rem;}
+  h2{font-family:'IBM Plex Mono',monospace;font-size:.75rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:1rem;padding-bottom:.5rem;border-bottom:1px solid var(--border);}
+  .section{margin-bottom:2.5rem;}
+  .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:2rem;}
+  .metric{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1rem 1.25rem;}
+  .metric .label{font-size:.7rem;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:.4rem;}
+  .metric .value{font-family:'IBM Plex Mono',monospace;font-size:1.5rem;font-weight:600;color:var(--accent);}
+  .metric .ic{font-size:.7rem;color:var(--muted);margin-top:.3rem;}
+  table{width:100%;border-collapse:collapse;font-size:.85rem;}
+  th{text-align:left;padding:8px 12px;color:var(--muted);font-size:.7rem;letter-spacing:.06em;text-transform:uppercase;border-bottom:1px solid var(--border);}
+  td{padding:8px 12px;border-bottom:1px solid var(--border);}
+  td:last-child,th:last-child{text-align:right;}
+  .err-ok{color:var(--accent);}
+  .err-warn{color:var(--warn);}
+  .graficas{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  .graf-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden;}
+  .graf-card.wide{grid-column:span 2;}
+  .graf-card p{font-size:.7rem;color:var(--muted);padding:.6rem 1rem;text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border);}
+  .graf-card img{width:100%;display:block;}
+  pre{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1.25rem;font-family:'IBM Plex Mono',monospace;font-size:.75rem;color:var(--muted);overflow-x:auto;white-space:pre-wrap;line-height:1.7;}
+  .rho-bar-wrap{background:var(--border);border-radius:4px;height:8px;margin-top:.4rem;}
+  .rho-bar{height:8px;border-radius:4px;background:var(--accent);}
+  @media(max-width:640px){.graficas{grid-template-columns:1fr;}.graf-card.wide{grid-column:span 1;}.metrics{grid-template-columns:1fr 1fr;}}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <div class="logo">TechClassUC</div>
+    <div class="sub">Simulador M/M/c &mdash; Modelos de Simulación</div>
+  </div>
+  <span class="badge badge-ok" style="margin-left:auto;">En línea</span>
+</header>
+
+<main>
+
+  <!-- métricas clave -->
+  <div class="section">
+    <h2>Métricas clave &mdash; Montecarlo ({{ n_rep }} réplicas)</h2>
+    <div class="metrics">
+      <div class="metric">
+        <div class="label">Wq simulado</div>
+        <div class="value">{{ wq_med }} min</div>
+        <div class="ic">IC 95%: [{{ wq_inf }}, {{ wq_sup }}]</div>
+      </div>
+      <div class="metric">
+        <div class="label">Lq simulado</div>
+        <div class="value">{{ lq_med }}</div>
+        <div class="ic">clientes en cola</div>
+      </div>
+      <div class="metric">
+        <div class="label">Utilización ρ</div>
+        <div class="value">{{ rho_pct }}%</div>
+        <div class="rho-bar-wrap"><div class="rho-bar" style="width:{{ rho_pct }}%"></div></div>
+      </div>
+      <div class="metric">
+        <div class="label">Wq analítico</div>
+        <div class="value" style="color:var(--accent2)">{{ wq_teo }} min</div>
+        <div class="ic">Fórmula M/M/c</div>
+      </div>
+      <div class="metric">
+        <div class="label">Réplicas mínimas</div>
+        <div class="value">{{ n_min }}</div>
+        <div class="ic">para error ≤ 5%</div>
+      </div>
+      <div class="metric">
+        <div class="label">Parámetros base</div>
+        <div class="value" style="font-size:.95rem;line-height:1.8;">λ={{ lam }} &nbsp; μ={{ mu }}</div>
+        <div class="ic">c={{ c }} técnicos &mdash; {{ t_sim }} min</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- tabla validación -->
+  <div class="section">
+    <h2>Validación analítica M/M/c vs Simulación</h2>
+    <table>
+      <thead><tr><th>Métrica</th><th>Teórico</th><th>Simulado</th><th>Error relativo</th></tr></thead>
+      <tbody>
+        {% for f in tabla %}
+        <tr>
+          <td>{{ f.metrica }}</td>
+          <td>{{ "%.4f"|format(f.valor_teorico) }}</td>
+          <td>{{ "%.4f"|format(f.valor_simulado) }}</td>
+          <td class="{{ 'err-ok' if f.error_relativo_pct < 5 else 'err-warn' }}">{{ "%.2f"|format(f.error_relativo_pct) }}%</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- gráficas -->
+  <div class="section">
+    <h2>Gráficas de simulación</h2>
+    <div class="graficas">
+      <div class="graf-card wide"><p>Evolución temporal del sistema</p><img src="/graficas/1_evolucion_temporal.png" alt="Evolución temporal"></div>
+      <div class="graf-card"><p>Histograma de tiempos de espera Wq</p><img src="/graficas/2_histograma_wq.png" alt="Histograma Wq"></div>
+      <div class="graf-card"><p>Wq promedio vs número de técnicos c</p><img src="/graficas/3_wq_vs_c.png" alt="Wq vs c"></div>
+      <div class="graf-card"><p>Factor de utilización ρ vs λ</p><img src="/graficas/4_rho_vs_lambda.png" alt="Rho vs Lambda"></div>
+      <div class="graf-card"><p>Distribución de medias Wq — verificación TCL</p><img src="/graficas/5_distribucion_medias_wq.png" alt="TCL"></div>
+      <div class="graf-card wide"><p>Heatmap análisis de sensibilidad</p><img src="/graficas/6_heatmap_sensibilidad.png" alt="Heatmap"></div>
+    </div>
+  </div>
+
+  <!-- reporte consola -->
+  <div class="section">
+    <h2>Reporte de consola</h2>
+    <pre>{{ reporte }}</pre>
+  </div>
+
+</main>
+</body>
+</html>"""
+
+
+# ── rutas ──────────────────────────────────────────────────────────────────
+
+@app.route("/")
+def home():
+    r = _mc["resumen"]
+    def fmt(v, d=2): return f"{v:.{d}f}"
+    rho_val = r["rho"]["media"]
+    wq_teo_val = _teo["Wq"] if _teo else 0.0
+    return render_template_string(HTML,
+        n_rep  = N_REP,
+        wq_med = fmt(r["wq_promedio"]["media"]),
+        wq_inf = fmt(r["wq_promedio"]["ic_inferior"]),
+        wq_sup = fmt(r["wq_promedio"]["ic_superior"]),
+        lq_med = fmt(r["lq_promedio"]["media"]),
+        rho_pct= fmt(rho_val * 100, 1),
+        wq_teo = fmt(wq_teo_val),
+        n_min  = _mc["n_minimo"],
+        lam=LAM_BASE, mu=MU_BASE, c=C_BASE, t_sim=int(T_SIM),
+        tabla  = _comp,
+        reporte= REPORTE_CONSOLA or "(sin salida de consola)",
+    )
+
+@app.route("/health")
+def health():
+    return jsonify({"status": "ok", "servicio": "TechClassUC Simulator"}), 200
+
+@app.route("/simular", methods=["POST"])
+def simular():
+    try:
+        b = request.get_json(force=True) or {}
+        lam = float(b.get("lam", LAM_BASE)); mu = float(b.get("mu", MU_BASE))
+        c = int(b.get("c", C_BASE)); N = int(b.get("N", N_REP))
+        if lam / (c * mu) >= 1:
+            return jsonify({"error": f"Sistema inestable ρ={lam/(c*mu):.3f}"}), 400
+        res = correr_replicas(N=N, lam=lam, mu=mu, c=c,
+                              t_sim=float(b.get("t_sim", T_SIM)),
+                              t_warm=float(b.get("t_warm", T_WARM)),
+                              semilla_base=int(b.get("semilla", SEMILLA)))
+        return jsonify({"resumen": res["resumen"], "n_minimo": res["n_minimo"]}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/analitico", methods=["POST"])
+def analitico():
+    try:
+        b = request.get_json(force=True) or {}
+        res = calcular_mmc(float(b.get("lam", LAM_BASE)),
+                           float(b.get("mu",  MU_BASE)),
+                           int(b.get("c", C_BASE)))
+        if res is None:
+            return jsonify({"error": "Sistema inestable"}), 400
+        return jsonify(res), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/sensibilidad", methods=["POST"])
+def sensibilidad():
+    try:
+        import numpy as np
+        b = request.get_json(force=True) or {}
+        sens = analisis_sensibilidad(mu=float(b.get("mu", MU_BASE)),
+                                     N=int(b.get("N", 15)),
+                                     c_valores=b.get("c_valores", [2,3,4,5]),
+                                     lam_valores=b.get("lam_valores", [8,10,12,14,16]))
+        def serial(v):
+            if isinstance(v, np.ndarray): return v.tolist()
+            if isinstance(v, (np.integer,)): return int(v)
+            if isinstance(v, (np.floating,)): return None if np.isnan(v) else float(v)
+            return v
+        return jsonify({k: serial(v) for k,v in sens.items() if k != "resultados"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e), "detalle": traceback.format_exc()}), 500
+
+@app.route("/comparar", methods=["POST"])
+def comparar():
+    try:
+        b = request.get_json(force=True) or {}
+        lam=float(b.get("lam",LAM_BASE)); mu=float(b.get("mu",MU_BASE)); c=int(b.get("c",C_BASE))
+        if lam/(c*mu)>=1: return jsonify({"error":"inestable"}),400
+        mc = correr_replicas(N=int(b.get("N",N_REP)), lam=lam, mu=mu, c=c)
+        return jsonify(comparar_con_simulacion(lam, mu, c, mc["resumen"])), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/graficas/<nombre>")
+def grafica(nombre):
+    ruta = os.path.join(GRAFICAS_DIR, nombre)
+    if not os.path.exists(ruta):
+        return jsonify({"error": "no encontrada"}), 404
+    return send_file(ruta, mimetype="image/png")
+
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port, debug=False)

@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: techclassuc-simulacion
+    runtime: docker
+    plan: free
+    region: ohio
+    envVars:
+      - key: PYTHONUNBUFFERED
+        value: "true"
+      - key: PORT
+        value: "10000"

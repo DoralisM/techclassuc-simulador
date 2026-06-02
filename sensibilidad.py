@@ -17,9 +17,9 @@ from montecarlo import correr_replicas
 
 def analisis_sensibilidad(
     mu: float = 4.0,
-    t_sim: float = 480.0,
-    t_warm: float = 60.0,
-    N: int = 30,
+    t_sim: float = 1440,
+    t_warm: float = 180,
+    N: int = 100,
     semilla_base: int = 42,
     c_valores: list | None = None,
     lam_valores: list | None = None,

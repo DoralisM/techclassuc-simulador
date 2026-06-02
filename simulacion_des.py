@@ -66,11 +66,9 @@ def proceso_cliente(
     cliente.t_fin = env.now
     recurso.release(req)
 
-    stats.registrar_servicio(t_servicio)
-
-    # Solo registrar clientes que terminaron después del warm-up
-    if cliente.t_llegada >= t_warm:
-        clientes_terminados.append(cliente)
+    if cliente.t_fin >= t_warm:
+      stats.registrar_servicio(t_servicio)
+      clientes_terminados.append(cliente)
 
 
 # ---------------------------------------------------------------------------

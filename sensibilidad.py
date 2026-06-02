@@ -121,7 +121,8 @@ def imprimir_tabla_sensibilidad(sens: dict) -> None:
     print("=" * 65)
 
     # Encabezado
-    header = f"{'c \\ λ':>6}" + "".join(f"{lam:>10.1f}" for lam in lam_vals)
+    col_title = "c \\ λ"
+    header = f"{col_title:>6}" + "".join(f"{lam:>10.1f}" for lam in lam_vals)
     print(header)
     print("-" * len(header))
 

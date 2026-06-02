@@ -179,16 +179,110 @@ HTML = """<!DOCTYPE html>
     </table>
   </div>
 
-  <!-- gráficas -->
+    <!-- gráficas -->
   <div class="section">
     <h2>Gráficas de simulación</h2>
+
     <div class="graficas">
-      <div class="graf-card wide"><p>Evolución temporal del sistema</p><img src="/graficas/1_evolucion_temporal.png" alt="Evolución temporal"></div>
-      <div class="graf-card"><p>Histograma de tiempos de espera Wq</p><img src="/graficas/2_histograma_wq.png" alt="Histograma Wq"></div>
-      <div class="graf-card"><p>Wq promedio vs número de técnicos c</p><img src="/graficas/3_wq_vs_c.png" alt="Wq vs c"></div>
-      <div class="graf-card"><p>Factor de utilización ρ vs λ</p><img src="/graficas/4_rho_vs_lambda.png" alt="Rho vs Lambda"></div>
-      <div class="graf-card"><p>Distribución de medias Wq — verificación TCL</p><img src="/graficas/5_distribucion_medias_wq.png" alt="TCL"></div>
-      <div class="graf-card wide"><p>Heatmap análisis de sensibilidad</p><img src="/graficas/6_heatmap_sensibilidad.png" alt="Heatmap"></div>
+      <div class="graf-card wide">
+        <p>Evolución temporal del sistema</p>
+        <img src="/graficas/1_evolucion_temporal.png" alt="Evolución temporal">
+      </div>
+
+      <div class="graf-card">
+        <p>Histograma de tiempos de espera Wq</p>
+        <img src="/graficas/2_histograma_wq.png" alt="Histograma Wq">
+      </div>
+
+      <div class="graf-card">
+        <p>Wq promedio vs número de técnicos c</p>
+        <img src="/graficas/3_wq_vs_c.png" alt="Wq vs c">
+      </div>
+
+      <div class="graf-card">
+        <p>Factor de utilización ρ vs λ</p>
+        <img src="/graficas/4_rho_vs_lambda.png" alt="Rho vs Lambda">
+      </div>
+
+      <div class="graf-card">
+        <p>Distribución de medias Wq — verificación TCL</p>
+        <img src="/graficas/5_distribucion_medias_wq.png" alt="TCL">
+      </div>
+
+      <div class="graf-card wide">
+        <p>Heatmap análisis de sensibilidad</p>
+        <img src="/graficas/6_heatmap_sensibilidad.png" alt="Heatmap">
+      </div>
+    </div>
+  </div>
+
+  <!-- conclusiones ejecutivas -->
+  <div class="section">
+    <h2>Conclusiones Ejecutivas</h2>
+
+    <div style="
+        background:var(--surface);
+        border:1px solid var(--border);
+        border-radius:8px;
+        padding:1.5rem;
+    ">
+
+      <h3 style="
+          color:var(--accent);
+          margin-bottom:1rem;
+          font-family:'IBM Plex Mono',monospace;
+      ">
+        Recomendación Operativa
+      </h3>
+
+      <p style="margin-bottom:1rem;">
+        El sistema actual opera con <strong>{{ c }} técnicos</strong> y presenta
+        un tiempo promedio de espera de
+        <strong>{{ wq_med }} minutos</strong>,
+        valor superior al objetivo operacional de 10 minutos.
+      </p>
+
+      <p style="margin-bottom:1rem;">
+        La utilización observada fue de
+        <strong>{{ rho_pct }}%</strong>,
+        indicando que los recursos disponibles trabajan cerca de su capacidad máxima.
+      </p>
+
+      <p style="margin-bottom:1rem;">
+        El análisis de sensibilidad demuestra que el sistema es altamente sensible
+        al crecimiento de la demanda. Con tres técnicos, tasas de llegada iguales
+        o superiores a 12 clientes por hora generan escenarios inestables.
+      </p>
+
+      <p style="margin-bottom:1rem;">
+        Los resultados indican que aumentar la capacidad a
+        <strong>4 técnicos</strong>
+        reduce significativamente los tiempos de espera y permite cumplir
+        el nivel de servicio esperado.
+      </p>
+
+      <div style="
+          margin-top:1rem;
+          padding:1rem;
+          border-left:4px solid var(--accent);
+          background:#0f1d18;
+          border-radius:4px;
+      ">
+        <strong>Conclusión Final:</strong><br><br>
+
+        El sistema actual con {{ c }} técnicos no garantiza tiempos de espera
+        inferiores a 10 minutos para todos los escenarios analizados.
+
+        Se recomienda operar con un mínimo de
+        <strong>4 técnicos</strong>
+        para mantener estabilidad operativa, reducir la congestión y mejorar
+        la experiencia del cliente.
+
+        Si se espera crecimiento futuro de la demanda, una configuración de
+        <strong>5 técnicos</strong>
+        proporciona un margen adicional de capacidad.
+      </div>
+
     </div>
   </div>
 
@@ -200,7 +294,8 @@ HTML = """<!DOCTYPE html>
 
 </main>
 </body>
-</html>"""
+</html>
+"""
 
 
 # ── rutas ──────────────────────────────────────────────────────────────────

@@ -123,6 +123,56 @@ HTML = """<!DOCTYPE html>
 </header>
 
 <main>
+<div class="section">
+  <h2>Parámetros de simulación</h2>
+
+  <form method="POST">
+
+    <div class="metrics">
+
+      <div class="metric">
+        <div class="label">λ</div>
+        <input type="number" step="0.1"
+               name="lam"
+               value="{{ lam }}">
+      </div>
+
+      <div class="metric">
+        <div class="label">μ</div>
+        <input type="number" step="0.1"
+               name="mu"
+               value="{{ mu }}">
+      </div>
+
+      <div class="metric">
+        <div class="label">Técnicos (c)</div>
+        <input type="number"
+               name="c"
+               value="{{ c }}">
+      </div>
+
+      <div class="metric">
+        <div class="label">Réplicas</div>
+        <input type="number"
+               name="n_rep"
+               value="{{ n_rep }}">
+      </div>
+
+    </div>
+
+    <button type="submit"
+      style="
+      padding:12px 20px;
+      border:none;
+      border-radius:8px;
+      background:var(--accent);
+      font-weight:bold;
+      cursor:pointer;">
+      Ejecutar simulación
+    </button>
+
+  </form>
+</div>
 
   <!-- métricas clave -->
   <div class="section">
@@ -300,26 +350,80 @@ HTML = """<!DOCTYPE html>
 
 # ── rutas ──────────────────────────────────────────────────────────────────
 
-@app.route("/")
+@app.route("/", methods=["GET", "POST"])
 def home():
-    r = _mc["resumen"]
-    def fmt(v, d=2): return f"{v:.{d}f}"
-    rho_val = r["rho"]["media"]
-    wq_teo_val = _teo["Wq"] if _teo else 0.0
-    return render_template_string(HTML,
-        n_rep  = N_REP,
-        wq_med = fmt(r["wq_promedio"]["media"]),
-        wq_inf = fmt(r["wq_promedio"]["ic_inferior"]),
-        wq_sup = fmt(r["wq_promedio"]["ic_superior"]),
-        lq_med = fmt(r["lq_promedio"]["media"]),
-        rho_pct= fmt(rho_val * 100, 1),
-        wq_teo = fmt(wq_teo_val),
-        n_min  = _mc["n_minimo"],
-        lam=LAM_BASE, mu=MU_BASE, c=C_BASE, t_sim=int(T_SIM),
-        tabla  = _comp,
-        reporte= REPORTE_CONSOLA or "(sin salida de consola)",
-    )
 
+    def fmt(v, d=2):
+        return f"{v:.{d}f}"
+
+    if request.method == "POST":
+
+        lam = float(request.form["lam"])
+        mu = float(request.form["mu"])
+        c = int(request.form["c"])
+        n_rep = int(request.form["n_rep"])
+
+        mc = correr_replicas(
+            N=n_rep,
+            lam=lam,
+            mu=mu,
+            c=c,
+            t_sim=T_SIM,
+            t_warm=T_WARM,
+            semilla_base=SEMILLA
+        )
+
+        teo = calcular_mmc(lam, mu, c)
+
+        comp = comparar_con_simulacion(
+            lam,
+            mu,
+            c,
+            mc["resumen"]
+        )
+
+    else:
+
+        lam = LAM_BASE
+        mu = MU_BASE
+        c = C_BASE
+        n_rep = N_REP
+
+        mc = _mc
+        teo = _teo
+        comp = _comp
+
+    r = mc["resumen"]
+
+    rho_val = r["rho"]["media"]
+    wq_teo_val = teo["Wq"] if teo else 0.0
+
+    return render_template_string(
+        HTML,
+
+        n_rep=n_rep,
+
+        wq_med=fmt(r["wq_promedio"]["media"]),
+        wq_inf=fmt(r["wq_promedio"]["ic_inferior"]),
+        wq_sup=fmt(r["wq_promedio"]["ic_superior"]),
+
+        lq_med=fmt(r["lq_promedio"]["media"]),
+
+        rho_pct=fmt(rho_val * 100, 1),
+
+        wq_teo=fmt(wq_teo_val),
+
+        n_min=mc["n_minimo"],
+
+        lam=lam,
+        mu=mu,
+        c=c,
+        t_sim=int(T_SIM),
+
+        tabla=comp,
+
+        reporte=REPORTE_CONSOLA or "(sin salida de consola)",
+    )
 @app.route("/health")
 def health():
     return jsonify({"status": "ok", "servicio": "TechClassUC Simulator"}), 200

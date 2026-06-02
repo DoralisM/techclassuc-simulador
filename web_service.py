@@ -358,11 +358,12 @@ def home():
 
     if request.method == "POST":
 
-        lam = float(request.form["lam"])
-        mu = float(request.form["mu"])
-        c = int(request.form["c"])
-        n_rep = int(request.form["n_rep"])
-
+        print("========== DEBUG ==========")
+        print("LAM =", lam)
+        print("MU =", mu)
+        print("C =", c)
+        print("===========================")
+        
         mc = correr_replicas(
             N=n_rep,
             lam=lam,

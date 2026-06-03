@@ -58,6 +58,8 @@ def correr_replicas(
         wq_todas   : lista plana de todos los Wq individuales.
         n_minimo   : réplicas mínimas para error relativo ≤ 5%.
     """
+    _validar_parametros(N, lam, mu, c, t_sim, t_warm)
+
     replicas = []
     wq_todas = []
     ws_todas = []
@@ -83,6 +85,53 @@ def correr_replicas(
         "ws_todas": ws_todas,
         "n_minimo": n_min,
     }
+
+
+def _validar_parametros(
+    N: int,
+    lam: float,
+    mu: float,
+    c: int,
+    t_sim: float,
+    t_warm: float,
+) -> None:
+    """Valida que la simulacion tenga parametros positivos y estables."""
+    numericos = {
+        "N": N,
+        "lam": lam,
+        "mu": mu,
+        "c": c,
+        "t_sim": t_sim,
+        "t_warm": t_warm,
+    }
+
+    for nombre, valor in numericos.items():
+        try:
+            valor_num = float(valor)
+        except (TypeError, ValueError):
+            raise ValueError(f"{nombre} debe ser un numero valido") from None
+
+        if not math.isfinite(valor_num):
+            raise ValueError(f"{nombre} debe ser un numero finito")
+
+    if N <= 0:
+        raise ValueError("N debe ser mayor que cero")
+    if lam <= 0:
+        raise ValueError("lam debe ser mayor que cero")
+    if mu <= 0:
+        raise ValueError("mu debe ser mayor que cero")
+    if c <= 0:
+        raise ValueError("c debe ser mayor que cero")
+    if t_sim <= 0:
+        raise ValueError("t_sim debe ser mayor que cero")
+    if t_warm < 0:
+        raise ValueError("t_warm no puede ser negativo")
+    if t_warm >= t_sim:
+        raise ValueError("t_warm debe ser menor que t_sim")
+
+    rho = lam / (c * mu)
+    if rho >= 1:
+        raise ValueError(f"Sistema inestable: rho = {rho:.3f}. Debe cumplirse lam < c*mu")
 
 
 # ---------------------------------------------------------------------------

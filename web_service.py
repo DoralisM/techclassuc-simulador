@@ -58,12 +58,18 @@ from visualizacion import (grafica_evolucion_temporal, grafica_histograma_wq,
 import visualizacion as _viz
 _viz.SALIDA_DIR = GRAFICAS_DIR
 
-grafica_evolucion_temporal(LAM_BASE, MU_BASE, C_BASE, T_SIM, SEMILLA)
-grafica_histograma_wq(_mc["wq_todas"], LAM_BASE, MU_BASE, C_BASE)
-grafica_wq_vs_c(LAM_BASE, MU_BASE, list(range(1, 7)), N=15, t_sim=T_SIM, t_warm=T_WARM)
-grafica_rho_vs_lam(MU_BASE, list(range(2, 7)))
-grafica_distribucion_medias_wq(_mc["replicas"], LAM_BASE, MU_BASE, C_BASE)
-grafica_heatmap_sensibilidad(_sens)
+def generar_graficas(lam, mu, c, mc, sens=None):
+    if sens is None:
+        sens = analisis_sensibilidad(mu=mu, N=15, semilla_base=SEMILLA)
+
+    grafica_evolucion_temporal(lam, mu, c, T_SIM, SEMILLA)
+    grafica_histograma_wq(mc["wq_todas"], lam, mu, c)
+    grafica_wq_vs_c(lam, mu, list(range(1, 7)), N=15, t_sim=T_SIM, t_warm=T_WARM)
+    grafica_rho_vs_lam(mu, list(range(2, 7)))
+    grafica_distribucion_medias_wq(mc["replicas"], lam, mu, c)
+    grafica_heatmap_sensibilidad(sens)
+
+generar_graficas(LAM_BASE, MU_BASE, C_BASE, _mc, _sens)
 
 sys.stdout = _old
 REPORTE_CONSOLA = _cap.texto
@@ -236,32 +242,32 @@ HTML = """<!DOCTYPE html>
     <div class="graficas">
       <div class="graf-card wide">
         <p>Evolución temporal del sistema</p>
-        <img src="/graficas/1_evolucion_temporal.png" alt="Evolución temporal">
+        <img src="/graficas/1_evolucion_temporal.png?v={{ graf_version }}" alt="Evolución temporal">
       </div>
 
       <div class="graf-card">
         <p>Histograma de tiempos de espera Wq</p>
-        <img src="/graficas/2_histograma_wq.png" alt="Histograma Wq">
+        <img src="/graficas/2_histograma_wq.png?v={{ graf_version }}" alt="Histograma Wq">
       </div>
 
       <div class="graf-card">
         <p>Wq promedio vs número de técnicos c</p>
-        <img src="/graficas/3_wq_vs_c.png" alt="Wq vs c">
+        <img src="/graficas/3_wq_vs_c.png?v={{ graf_version }}" alt="Wq vs c">
       </div>
 
       <div class="graf-card">
         <p>Factor de utilización ρ vs λ</p>
-        <img src="/graficas/4_rho_vs_lambda.png" alt="Rho vs Lambda">
+        <img src="/graficas/4_rho_vs_lambda.png?v={{ graf_version }}" alt="Rho vs Lambda">
       </div>
 
       <div class="graf-card">
         <p>Distribución de medias Wq — verificación TCL</p>
-        <img src="/graficas/5_distribucion_medias_wq.png" alt="TCL">
+        <img src="/graficas/5_distribucion_medias_wq.png?v={{ graf_version }}" alt="TCL">
       </div>
 
       <div class="graf-card wide">
         <p>Heatmap análisis de sensibilidad</p>
-        <img src="/graficas/6_heatmap_sensibilidad.png" alt="Heatmap">
+        <img src="/graficas/6_heatmap_sensibilidad.png?v={{ graf_version }}" alt="Heatmap">
       </div>
     </div>
   </div>
@@ -357,22 +363,22 @@ def home():
         return f"{v:.{d}f}"
 
     def render_error(mensaje, lam=LAM_BASE, mu=MU_BASE, c=C_BASE, n_rep=N_REP):
-        r = _mc["resumen"]
         return render_template_string(
             HTML,
             n_rep=n_rep,
-            wq_med=fmt(r["wq_promedio"]["media"]),
-            wq_inf=fmt(r["wq_promedio"]["ic_inferior"]),
-            wq_sup=fmt(r["wq_promedio"]["ic_superior"]),
-            lq_med=fmt(r["lq_promedio"]["media"]),
-            rho_pct=fmt(r["rho"]["media"] * 100, 1),
-            wq_teo=fmt(_teo["Wq"]),
-            n_min=_mc["n_minimo"],
+            wq_med="N/A",
+            wq_inf="N/A",
+            wq_sup="N/A",
+            lq_med="N/A",
+            rho_pct="0",
+            wq_teo="N/A",
+            n_min="N/A",
             lam=lam,
             mu=mu,
             c=c,
             t_sim=int(T_SIM),
-            tabla=_comp,
+            tabla=[],
+            graf_version="base",
             reporte=mensaje
         ), 400
 
@@ -435,6 +441,8 @@ def home():
         )
 
         r = mc["resumen"]
+        generar_graficas(lam, mu, c, mc)
+        graf_version = f"{lam}-{mu}-{c}-{n_rep}"
 
         return render_template_string(
             HTML,
@@ -451,6 +459,7 @@ def home():
             c=c,
             t_sim=int(T_SIM),
             tabla=comp,
+            graf_version=graf_version,
             reporte=REPORTE_CONSOLA or "(sin salida de consola)"
         )
 
@@ -472,6 +481,7 @@ def home():
         c=C_BASE,
         t_sim=int(T_SIM),
         tabla=_comp,
+        graf_version="base",
         reporte=REPORTE_CONSOLA or "(sin salida de consola)"
     )
     

@@ -356,15 +356,66 @@ def home():
     def fmt(v, d=2):
         return f"{v:.{d}f}"
 
+    def render_error(mensaje, lam=LAM_BASE, mu=MU_BASE, c=C_BASE, n_rep=N_REP):
+        r = _mc["resumen"]
+        return render_template_string(
+            HTML,
+            n_rep=n_rep,
+            wq_med=fmt(r["wq_promedio"]["media"]),
+            wq_inf=fmt(r["wq_promedio"]["ic_inferior"]),
+            wq_sup=fmt(r["wq_promedio"]["ic_superior"]),
+            lq_med=fmt(r["lq_promedio"]["media"]),
+            rho_pct=fmt(r["rho"]["media"] * 100, 1),
+            wq_teo=fmt(_teo["Wq"]),
+            n_min=_mc["n_minimo"],
+            lam=lam,
+            mu=mu,
+            c=c,
+            t_sim=int(T_SIM),
+            tabla=_comp,
+            reporte=mensaje
+        ), 400
+
     if request.method == "POST":
 
-      print("========== DEBUG ==========")
-      print("LAM =", lam)
-      print("MU =", mu)
-      print("C =", c)
-      print("===========================")
+        try:
+            lam = float(request.form.get("lam", ""))
+            mu = float(request.form.get("mu", ""))
+            c = int(request.form.get("c", ""))
+            n_rep = int(request.form.get("n_rep", ""))
+        except (TypeError, ValueError):
+            return render_error(
+                "Error: todos los campos deben tener valores numericos validos."
+            )
 
-      mc = correr_replicas(
+        if lam <= 0 or mu <= 0 or c <= 0 or n_rep <= 0:
+            return render_error(
+                "Error: lambda, mu, tecnicos y replicas deben ser mayores que cero.",
+                lam=lam,
+                mu=mu,
+                c=c,
+                n_rep=n_rep
+            )
+
+        print("========== DEBUG ==========")
+        print("LAM =", lam)
+        print("MU =", mu)
+        print("C =", c)
+        print("N_REP =", n_rep)
+
+        # Verificar estabilidad
+        rho = lam / (c * mu)
+
+        if rho >= 1:
+            return render_error(
+                f"Error: sistema inestable. rho = {rho:.3f}. Debe cumplirse lambda < c*mu.",
+                lam=lam,
+                mu=mu,
+                c=c,
+                n_rep=n_rep
+            )
+
+        mc = correr_replicas(
             N=n_rep,
             lam=lam,
             mu=mu,
@@ -374,64 +425,56 @@ def home():
             semilla_base=SEMILLA
         )
 
-      comp = comparar_con_simulacion(
+        teo = calcular_mmc(lam, mu, c)
+
+        comp = comparar_con_simulacion(
             lam,
             mu,
             c,
             mc["resumen"]
         )
 
-      teo = calcular_mmc(lam, mu, c)
+        r = mc["resumen"]
 
-      comp = comparar_con_simulacion(
-            lam,
-            mu,
-            c,
-            mc["resumen"]
+        return render_template_string(
+            HTML,
+            n_rep=n_rep,
+            wq_med=fmt(r["wq_promedio"]["media"]),
+            wq_inf=fmt(r["wq_promedio"]["ic_inferior"]),
+            wq_sup=fmt(r["wq_promedio"]["ic_superior"]),
+            lq_med=fmt(r["lq_promedio"]["media"]),
+            rho_pct=fmt(r["rho"]["media"] * 100, 1),
+            wq_teo=fmt(teo["Wq"]),
+            n_min=mc["n_minimo"],
+            lam=lam,
+            mu=mu,
+            c=c,
+            t_sim=int(T_SIM),
+            tabla=comp,
+            reporte=REPORTE_CONSOLA or "(sin salida de consola)"
         )
 
-    else:
-
-        lam = LAM_BASE
-        mu = MU_BASE
-        c = C_BASE
-        n_rep = N_REP
-
-        mc = _mc
-        teo = _teo
-        comp = _comp
-
-    r = mc["resumen"]
-
-    rho_val = r["rho"]["media"]
-    wq_teo_val = teo["Wq"] if teo else 0.0
+    # GET inicial
+    r = _mc["resumen"]
 
     return render_template_string(
         HTML,
-
-        n_rep=n_rep,
-
+        n_rep=N_REP,
         wq_med=fmt(r["wq_promedio"]["media"]),
         wq_inf=fmt(r["wq_promedio"]["ic_inferior"]),
         wq_sup=fmt(r["wq_promedio"]["ic_superior"]),
-
         lq_med=fmt(r["lq_promedio"]["media"]),
-
-        rho_pct=fmt(rho_val * 100, 1),
-
-        wq_teo=fmt(wq_teo_val),
-
-        n_min=mc["n_minimo"],
-
-        lam=lam,
-        mu=mu,
-        c=c,
+        rho_pct=fmt(r["rho"]["media"] * 100, 1),
+        wq_teo=fmt(_teo["Wq"]),
+        n_min=_mc["n_minimo"],
+        lam=LAM_BASE,
+        mu=MU_BASE,
+        c=C_BASE,
         t_sim=int(T_SIM),
-
-        tabla=comp,
-
-        reporte=REPORTE_CONSOLA or "(sin salida de consola)",
+        tabla=_comp,
+        reporte=REPORTE_CONSOLA or "(sin salida de consola)"
     )
+    
 @app.route("/health")
 def health():
     return jsonify({"status": "ok", "servicio": "TechClassUC Simulator"}), 200
@@ -442,6 +485,8 @@ def simular():
         b = request.get_json(force=True) or {}
         lam = float(b.get("lam", LAM_BASE)); mu = float(b.get("mu", MU_BASE))
         c = int(b.get("c", C_BASE)); N = int(b.get("N", N_REP))
+        if lam <= 0 or mu <= 0 or c <= 0 or N <= 0:
+            return jsonify({"error": "lam, mu, c y N deben ser mayores que cero"}), 400
         if lam / (c * mu) >= 1:
             return jsonify({"error": f"Sistema inestable ρ={lam/(c*mu):.3f}"}), 400
         res = correr_replicas(N=N, lam=lam, mu=mu, c=c,

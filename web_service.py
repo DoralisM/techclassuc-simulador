@@ -358,13 +358,13 @@ def home():
 
     if request.method == "POST":
 
-        print("========== DEBUG ==========")
-        print("LAM =", lam)
-        print("MU =", mu)
-        print("C =", c)
-        print("===========================")
-        
-        mc = correr_replicas(
+      print("========== DEBUG ==========")
+      print("LAM =", lam)
+      print("MU =", mu)
+      print("C =", c)
+      print("===========================")
+
+      mc = correr_replicas(
             N=n_rep,
             lam=lam,
             mu=mu,
@@ -374,9 +374,16 @@ def home():
             semilla_base=SEMILLA
         )
 
-        teo = calcular_mmc(lam, mu, c)
+      comp = comparar_con_simulacion(
+            lam,
+            mu,
+            c,
+            mc["resumen"]
+        )
 
-        comp = comparar_con_simulacion(
+      teo = calcular_mmc(lam, mu, c)
+
+      comp = comparar_con_simulacion(
             lam,
             mu,
             c,

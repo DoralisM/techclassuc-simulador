@@ -21,6 +21,7 @@ T_SIM      = 480.0
 T_WARM     = 60.0
 N_REP      = 30
 SEMILLA    = 42
+UNIDAD_T_SIM = "min"
 
 BASE_DIR      = os.path.dirname(os.path.abspath(__file__))
 GRAFICAS_DIR  = os.path.join(BASE_DIR, "graficas")
@@ -58,18 +59,18 @@ from visualizacion import (grafica_evolucion_temporal, grafica_histograma_wq,
 import visualizacion as _viz
 _viz.SALIDA_DIR = GRAFICAS_DIR
 
-def generar_graficas(lam, mu, c, mc, sens=None):
+def generar_graficas(lam, mu, c, mc, t_sim=T_SIM, t_warm=T_WARM, sens=None):
     if sens is None:
         sens = analisis_sensibilidad(mu=mu, N=15, semilla_base=SEMILLA)
 
-    grafica_evolucion_temporal(lam, mu, c, T_SIM, SEMILLA)
+    grafica_evolucion_temporal(lam, mu, c, t_sim, SEMILLA)
     grafica_histograma_wq(mc["wq_todas"], lam, mu, c)
-    grafica_wq_vs_c(lam, mu, list(range(1, 7)), N=15, t_sim=T_SIM, t_warm=T_WARM)
+    grafica_wq_vs_c(lam, mu, list(range(1, 7)), N=15, t_sim=t_sim, t_warm=t_warm)
     grafica_rho_vs_lam(mu, list(range(2, 7)))
     grafica_distribucion_medias_wq(mc["replicas"], lam, mu, c)
     grafica_heatmap_sensibilidad(sens)
 
-generar_graficas(LAM_BASE, MU_BASE, C_BASE, _mc, _sens)
+generar_graficas(LAM_BASE, MU_BASE, C_BASE, _mc, sens=_sens)
 
 sys.stdout = _old
 REPORTE_CONSOLA = _cap.texto
@@ -114,6 +115,11 @@ HTML = """<!DOCTYPE html>
   .graf-card p{font-size:.7rem;color:var(--muted);padding:.6rem 1rem;text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border);}
   .graf-card img{width:100%;display:block;}
   pre{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1.25rem;font-family:'IBM Plex Mono',monospace;font-size:.75rem;color:var(--muted);overflow-x:auto;white-space:pre-wrap;line-height:1.7;}
+  input,select{width:100%;margin-top:.35rem;padding:.55rem .65rem;border:1px solid var(--border);border-radius:6px;background:#0d0f14;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:.95rem;}
+  input:focus,select:focus{outline:2px solid var(--accent2);outline-offset:1px;}
+  .alert{margin:0 0 1rem 0;padding:.85rem 1rem;border-radius:8px;border:1px solid var(--border);font-size:.9rem;}
+  .alert-ok{background:#0f1d18;border-color:#174f3d;color:var(--accent);}
+  .alert-error{background:#2e140d;border-color:#63321f;color:#ffb08a;}
   .rho-bar-wrap{background:var(--border);border-radius:4px;height:8px;margin-top:.4rem;}
   .rho-bar{height:8px;border-radius:4px;background:var(--accent);}
   @media(max-width:640px){.graficas{grid-template-columns:1fr;}.graf-card.wide{grid-column:span 1;}.metrics{grid-template-columns:1fr 1fr;}}
@@ -131,6 +137,10 @@ HTML = """<!DOCTYPE html>
 <main>
 <div class="section">
   <h2>Parámetros de simulación</h2>
+
+  {% if estado_mensaje %}
+  <div class="alert alert-{{ estado_tipo }}">{{ estado_mensaje }}</div>
+  {% endif %}
 
   <form method="POST">
 
@@ -162,6 +172,22 @@ HTML = """<!DOCTYPE html>
         <input type="number"
                name="n_rep"
                value="{{ n_rep }}">
+      </div>
+
+      <div class="metric">
+        <div class="label">Tiempo de ejecución</div>
+        <input type="number" step="0.1"
+               name="t_sim_valor"
+               value="{{ t_sim_valor }}">
+      </div>
+
+      <div class="metric">
+        <div class="label">Unidad</div>
+        <select name="t_sim_unidad">
+          <option value="min" {{ 'selected' if t_sim_unidad == 'min' else '' }}>Minutos</option>
+          <option value="seg" {{ 'selected' if t_sim_unidad == 'seg' else '' }}>Segundos</option>
+          <option value="horas" {{ 'selected' if t_sim_unidad == 'horas' else '' }}>Horas</option>
+        </select>
       </div>
 
     </div>
@@ -197,7 +223,7 @@ HTML = """<!DOCTYPE html>
       <div class="metric">
         <div class="label">Utilización ρ</div>
         <div class="value">{{ rho_pct }}%</div>
-        <div class="rho-bar-wrap"><div class="rho-bar" style="width:{{ rho_pct }}%"></div></div>
+        <div class="rho-bar-wrap"><div class="rho-bar" style="width:{{ rho_bar_pct }}%"></div></div>
       </div>
       <div class="metric">
         <div class="label">Wq analítico</div>
@@ -356,13 +382,50 @@ HTML = """<!DOCTYPE html>
 
 # ── rutas ──────────────────────────────────────────────────────────────────
 
+def convertir_a_minutos(valor, unidad):
+    valor = float(valor)
+    unidad = (unidad or UNIDAD_T_SIM).lower()
+
+    if unidad in ("seg", "segundos", "s"):
+        return valor / 60.0
+    if unidad in ("min", "minutos", "m"):
+        return valor
+    if unidad in ("hora", "horas", "h"):
+        return valor * 60.0
+
+    raise ValueError("unidad de tiempo no valida")
+
+
+def normalizar_unidad_tiempo(unidad):
+    unidad = (unidad or UNIDAD_T_SIM).lower()
+    if unidad in ("seg", "segundos", "s"):
+        return "seg"
+    if unidad in ("min", "minutos", "m"):
+        return "min"
+    if unidad in ("hora", "horas", "h"):
+        return "horas"
+    raise ValueError("unidad de tiempo no valida")
+
+
 @app.route("/", methods=["GET", "POST"])
 def home():
 
     def fmt(v, d=2):
         return f"{v:.{d}f}"
 
-    def render_error(mensaje, lam=LAM_BASE, mu=MU_BASE, c=C_BASE, n_rep=N_REP):
+    def render_error(
+        mensaje,
+        lam=LAM_BASE,
+        mu=MU_BASE,
+        c=C_BASE,
+        n_rep=N_REP,
+        t_sim_valor=T_SIM,
+        t_sim_unidad=UNIDAD_T_SIM,
+        t_sim=T_SIM,
+        rho_pct="0",
+        estado_mensaje=None,
+        estado_tipo="ok",
+    ):
         return render_template_string(
             HTML,
             n_rep=n_rep,
@@ -370,44 +433,66 @@ def home():
             wq_inf="N/A",
             wq_sup="N/A",
             lq_med="N/A",
-            rho_pct="0",
+            rho_pct=rho_pct,
+            rho_bar_pct=min(float(rho_pct), 100.0),
             wq_teo="N/A",
             n_min="N/A",
             lam=lam,
             mu=mu,
             c=c,
-            t_sim=int(T_SIM),
+            t_sim_valor=t_sim_valor,
+            t_sim_unidad=t_sim_unidad,
+            t_sim=fmt(t_sim),
             tabla=[],
             graf_version="base",
-            reporte=mensaje
+            reporte=mensaje,
+            estado_mensaje=mensaje,
+            estado_tipo="error"
         ), 400
 
     if request.method == "POST":
+
+        t_sim_valor_raw = request.form.get("t_sim_valor", T_SIM)
+        t_sim_unidad_raw = request.form.get("t_sim_unidad", UNIDAD_T_SIM)
 
         try:
             lam = float(request.form.get("lam", ""))
             mu = float(request.form.get("mu", ""))
             c = int(request.form.get("c", ""))
             n_rep = int(request.form.get("n_rep", ""))
+            t_sim_valor = float(t_sim_valor_raw)
+            t_sim_unidad = normalizar_unidad_tiempo(t_sim_unidad_raw)
+            t_sim = convertir_a_minutos(t_sim_valor, t_sim_unidad)
         except (TypeError, ValueError):
             return render_error(
-                "Error: todos los campos deben tener valores numericos validos."
+                "Error: todos los campos deben tener valores numericos validos.",
+                t_sim_valor=t_sim_valor_raw,
+                t_sim_unidad=t_sim_unidad_raw
             )
 
-        if lam <= 0 or mu <= 0 or c <= 0 or n_rep <= 0:
+        if lam <= 0 or mu <= 0 or c <= 0 or n_rep <= 0 or t_sim <= 0:
             return render_error(
-                "Error: lambda, mu, tecnicos y replicas deben ser mayores que cero.",
+                "Error: lambda, mu, tecnicos, replicas y tiempo deben ser mayores que cero.",
                 lam=lam,
                 mu=mu,
                 c=c,
-                n_rep=n_rep
+                n_rep=n_rep,
+                t_sim_valor=t_sim_valor,
+                t_sim_unidad=t_sim_unidad,
+                t_sim=t_sim
             )
 
-        print("========== DEBUG ==========")
-        print("LAM =", lam)
-        print("MU =", mu)
-        print("C =", c)
-        print("N_REP =", n_rep)
+        if t_sim <= T_WARM:
+            return render_error(
+                f"Error: el tiempo de ejecucion debe ser mayor que el calentamiento ({T_WARM:.0f} min).",
+                lam=lam,
+                mu=mu,
+                c=c,
+                n_rep=n_rep,
+                t_sim_valor=t_sim_valor,
+                t_sim_unidad=t_sim_unidad,
+                t_sim=t_sim
+            )
 
         # Verificar estabilidad
         rho = lam / (c * mu)
@@ -418,7 +503,11 @@ def home():
                 lam=lam,
                 mu=mu,
                 c=c,
-                n_rep=n_rep
+                n_rep=n_rep,
+                t_sim_valor=t_sim_valor,
+                t_sim_unidad=t_sim_unidad,
+                t_sim=t_sim,
+                rho_pct=fmt(rho * 100, 1)
             )
 
         mc = correr_replicas(
@@ -426,7 +515,7 @@ def home():
             lam=lam,
             mu=mu,
             c=c,
-            t_sim=T_SIM,
+            t_sim=t_sim,
             t_warm=T_WARM,
             semilla_base=SEMILLA
         )
@@ -441,8 +530,8 @@ def home():
         )
 
         r = mc["resumen"]
-        generar_graficas(lam, mu, c, mc)
-        graf_version = f"{lam}-{mu}-{c}-{n_rep}"
+        generar_graficas(lam, mu, c, mc, t_sim=t_sim, t_warm=T_WARM)
+        graf_version = f"{lam}-{mu}-{c}-{n_rep}-{t_sim}"
 
         return render_template_string(
             HTML,
@@ -452,15 +541,20 @@ def home():
             wq_sup=fmt(r["wq_promedio"]["ic_superior"]),
             lq_med=fmt(r["lq_promedio"]["media"]),
             rho_pct=fmt(r["rho"]["media"] * 100, 1),
+            rho_bar_pct=min(r["rho"]["media"] * 100, 100.0),
             wq_teo=fmt(teo["Wq"]),
             n_min=mc["n_minimo"],
             lam=lam,
             mu=mu,
             c=c,
-            t_sim=int(T_SIM),
+            t_sim_valor=t_sim_valor,
+            t_sim_unidad=t_sim_unidad,
+            t_sim=fmt(t_sim),
             tabla=comp,
             graf_version=graf_version,
-            reporte=REPORTE_CONSOLA or "(sin salida de consola)"
+            reporte=REPORTE_CONSOLA or "(sin salida de consola)",
+            estado_mensaje="Simulacion calculada correctamente.",
+            estado_tipo="ok"
         )
 
     # GET inicial
@@ -474,15 +568,20 @@ def home():
         wq_sup=fmt(r["wq_promedio"]["ic_superior"]),
         lq_med=fmt(r["lq_promedio"]["media"]),
         rho_pct=fmt(r["rho"]["media"] * 100, 1),
+        rho_bar_pct=min(r["rho"]["media"] * 100, 100.0),
         wq_teo=fmt(_teo["Wq"]),
         n_min=_mc["n_minimo"],
         lam=LAM_BASE,
         mu=MU_BASE,
         c=C_BASE,
-        t_sim=int(T_SIM),
+        t_sim_valor=T_SIM,
+        t_sim_unidad=UNIDAD_T_SIM,
+        t_sim=fmt(T_SIM),
         tabla=_comp,
         graf_version="base",
-        reporte=REPORTE_CONSOLA or "(sin salida de consola)"
+        reporte=REPORTE_CONSOLA or "(sin salida de consola)",
+        estado_mensaje=None,
+        estado_tipo="ok"
     )
     
 @app.route("/health")
@@ -495,15 +594,24 @@ def simular():
         b = request.get_json(force=True) or {}
         lam = float(b.get("lam", LAM_BASE)); mu = float(b.get("mu", MU_BASE))
         c = int(b.get("c", C_BASE)); N = int(b.get("N", N_REP))
-        if lam <= 0 or mu <= 0 or c <= 0 or N <= 0:
-            return jsonify({"error": "lam, mu, c y N deben ser mayores que cero"}), 400
+        if "t_sim_valor" in b:
+            t_sim = convertir_a_minutos(b.get("t_sim_valor"), b.get("t_sim_unidad", UNIDAD_T_SIM))
+        else:
+            t_sim = float(b.get("t_sim", T_SIM))
+        t_warm = float(b.get("t_warm", T_WARM))
+        if lam <= 0 or mu <= 0 or c <= 0 or N <= 0 or t_sim <= 0:
+            return jsonify({"error": "lam, mu, c, N y t_sim deben ser mayores que cero"}), 400
+        if t_warm < 0 or t_warm >= t_sim:
+            return jsonify({"error": "t_warm debe ser mayor o igual a cero y menor que t_sim"}), 400
         if lam / (c * mu) >= 1:
             return jsonify({"error": f"Sistema inestable ρ={lam/(c*mu):.3f}"}), 400
         res = correr_replicas(N=N, lam=lam, mu=mu, c=c,
-                              t_sim=float(b.get("t_sim", T_SIM)),
-                              t_warm=float(b.get("t_warm", T_WARM)),
+                              t_sim=t_sim,
+                              t_warm=t_warm,
                               semilla_base=int(b.get("semilla", SEMILLA)))
-        return jsonify({"resumen": res["resumen"], "n_minimo": res["n_minimo"]}), 200
+        return jsonify({"resumen": res["resumen"], "n_minimo": res["n_minimo"], "t_sim": t_sim}), 200
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
